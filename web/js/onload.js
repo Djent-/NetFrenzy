@@ -54,6 +54,10 @@ function draw() {
 			"PROBES": {
 				"thickness": "0.1",
 				"caption": true,
+			},
+			"PROBE_RESPONSE": {
+				"thickness": "0.1",
+				"caption": true,
 			}
 		},
 		initial_cypher: "MATCH (n) RETURN *"
