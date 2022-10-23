@@ -32,7 +32,7 @@ function draw() {
 					"pagerank"
 				],
 			"font": {"size": 12, "color": "#0000BB"}
-			}
+			},
 		},
 		relationships: {
 			"CONNECTED": {
@@ -48,6 +48,10 @@ function draw() {
 				"caption": true,
 			},
 			"ADVERTISES": {
+				"thickness": "0.1",
+				"caption": true,
+			},
+			"PROBES": {
 				"thickness": "0.1",
 				"caption": true,
 			}
