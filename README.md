@@ -87,9 +87,4 @@ MATCH (n) DETACH DELETE n
 
 # Contributing
 
-Please check out the [Good First Issues](https://github.com/CoalfireFederal/NetFrenzy/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Feel free to contribute user stories to explain how new functionality could improve NetFrenzy. Issues with Help Wanted are requesting input from the community on implementation details and general usability.
-
-**For CoalfireFederal organization members:**
-
-Please make a new branch to make modifications, then submit a pull request rather than committing directly to the main branch. Your branch can be deleted once the pull request is merged. Assign yourself to an issue to let me know you're working on it.
-
+Please check out the [Good First Issues](https://github.com/djent-/NetFrenzy/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Feel free to contribute user stories to explain how new functionality could improve NetFrenzy. Issues with Help Wanted are requesting input from the community on implementation details and general usability.
