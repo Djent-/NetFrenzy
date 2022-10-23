@@ -22,6 +22,8 @@ class Pcap:
         self.debug_time = False
         self._time_start = 0
         self.debug_time_neo4j = 0
+        self.total_time_start = time.time()
+        self.total_time_netfrenzy = 0
         self.debug_cache = False
         self.cache = {}
         self.cache_max = 0
@@ -71,7 +73,7 @@ class Pcap:
         macs = get_macs(packet, cached=self.is_cached)
         ip_src, ip_dst = get_ips(packet)
         port_src, port_dst = get_ports(packet)
-        ssid, probe = get_ssid(packet)
+        ssid, frame_type = get_ssid(packet)
         time, length, service, service_layer = None, None, None, None
         if not self.reduce:
             time = get_time(packet)
@@ -95,15 +97,15 @@ class Pcap:
             self.create_connection_ip(neo4j, ip_src, ip_dst, port_dst, proto, time, length, service, service_layer)
         elif None not in (macs['src']['mac'], macs['dst']['mac']):
             # Create a connection between MAC addresses
-            self.create_connection_mac(neo4j, macs['src']['mac'], macs['dst']['mac'], proto, time, length, service, service_layer)
+            self.create_connection_mac(neo4j, macs['src']['mac'], macs['dst']['mac'], proto, time, length, service, service_layer, frame_type)
         if None not in (macs['src']['mac'], macs['dst']['mac'], macs['tra']['mac'], macs['rec']['mac']):
             # Create a connection between MAC addresses
             # This is for wlan frames that have ra and ta
             # We are connecting the sender to transmitter, receiver to destination
-            self.create_connection_mac(neo4j, macs['src']['mac'], macs['tra']['mac'], proto, time, length, service, service_layer)
-            self.create_connection_mac(neo4j, macs['rec']['mac'], macs['dst']['mac'], proto, time, length, service, service_layer)
+            self.create_connection_mac(neo4j, macs['src']['mac'], macs['tra']['mac'], proto, time, length, service, service_layer, frame_type)
+            self.create_connection_mac(neo4j, macs['rec']['mac'], macs['dst']['mac'], proto, time, length, service, service_layer, frame_type)
 
-        self.create_ssid(neo4j, ssid, probe, macs['src']['mac'])
+        self.create_ssid(neo4j, ssid, frame_type, macs['src']['mac'])
 
     def debug_time_start(self):
         if self.debug_time:
@@ -115,8 +117,11 @@ class Pcap:
             self.debug_time_neo4j += _time_end - self._time_start
 
     def print_debug_time(self):
+        self.debug_time_neo4j = time.time()
         if self.debug_time:
             print(f'Time in Neo4j: {self.debug_time_neo4j}')
+            print(f'Total time: {self.total_time_start - self.total_time_netfrenzy}')
+            print(f'Difference: {self.total_time_start - self.total_time_netfrenzy - self.debug_time_neo4j}')
 
     def cache_init(self):
         self.cache = {
@@ -146,6 +151,11 @@ class Pcap:
                 'misses': 0,
             },
             'PROBES': {
+                'cache': deque([]),
+                'hits': 0,
+                'misses': 0,
+            },
+            'PROBE_RESPONSE': {
                 'cache': deque([]),
                 'hits': 0,
                 'misses': 0,
@@ -270,7 +280,9 @@ class Pcap:
         neo4j.raw_query(query)
         self.debug_time_end()
     
-    def create_connection_mac(self, neo4j, mac_src, mac_dst, proto, time, length, service, service_layer):
+    def create_connection_mac(self, neo4j, mac_src, mac_dst, proto, time, length, service, service_layer, frame_type):
+        if frame_type == 'probe_response':
+            return self.create_probe_response_mac(neo4j, mac_src, mac_dst)
         if self.reduce:
             self.create_connection_mac_reduced(neo4j, mac_src, mac_dst, proto)
         else:
@@ -312,7 +324,17 @@ class Pcap:
         neo4j.raw_query(query)
         self.debug_time_end()
 
-    def create_ssid(self, neo4j, ssid, probe, mac_src):
+    def create_probe_response_mac(self, neo4j, mac_src, mac_dst):
+        # Create CONNECTED relationship between MACs
+        query = f'''MATCH (n:MAC {{name: "{mac_src}"}})
+    MATCH (m:MAC {{name: "{mac_dst}"}})
+    MERGE (n)-[r:PROBE_RESPONSE]->(m)
+    return r'''
+        self.debug_time_start()
+        neo4j.raw_query(query)
+        self.debug_time_end()
+
+    def create_ssid(self, neo4j, ssid, frame_type, mac_src):
         if ssid is None:
             return
         if not self.cached(ssid, 'SSID'):
@@ -322,8 +344,10 @@ class Pcap:
         if mac_src is None:
             return
         relationship = 'ADVERTISES'
-        if probe:
+        if frame_type == 'probe':
             relationship = 'PROBES'
+        elif frame_type == 'probe_response':
+            return
         if not self.cached([mac_src, ssid], relationship):
             self.debug_time_start()
             neo4j.new_relationship(mac_src, ssid, relationship)
@@ -451,7 +475,7 @@ def get_ssid(packet):
     # It's noisy and I'm not sure what to make of it
     ignore = ('SSID')
     ssid = None
-    probe = False
+    frame_type = 'beacon'
     if 'wlan.mgt' in packet:
         # Format: Tag: SSID parameter set: "TMobileWiFi-2.4GHz"
         length = packet['wlan.mgt'].get_field('wlan_tag_length')
@@ -460,7 +484,9 @@ def get_ssid(packet):
             ssid = tag[len(tag)-int(length)-1:-1]
     if 'wlan' in packet:
         if packet.wlan.fc_type_subtype == '0x0004':
-            probe = True
+            frame_type = 'probe'
+        if packet.wlan.fc_type_subtype == '0x0005':
+            frame_type = 'probe_response'
     if ssid is not None and ssid in ignore:
         ssid = None
-    return ssid, probe
+    return ssid, frame_type
