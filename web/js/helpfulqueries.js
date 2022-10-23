@@ -8,6 +8,7 @@ var helpfulqueries = {
 	"Find all 80/tcp connections": "MATCH (n)-[r:CONNECTED {port: 80, protocol: \"tcp\"}]->(m) RETURN *",
 	"Top 10 IPs with most outbound connections": "MATCH (n:IP), (m:IP), (n)-[r:CONNECTED]->(m) WITH n, count(r) AS rel_count ORDER BY rel_count DESC LIMIT 10 MATCH p=(m)<-[r:CONNECTED]-(n) RETURN p",
 	"Top 10 connections by data transferred": "MATCH ()-[r:CONNECTED]->(:IP) WITH r, r.data_size AS data ORDER BY data DESC LIMIT 10 MATCH (n)-[r]-(m) RETURN n,r,m",
+	"General wireless query": "MATCH (o:MAC)-[r:CONNECTED|ADVERTISES|PROBES]->(m) WHERE NOT m:IP AND (m.multicast IS NULL OR m.multicast = false) RETURN *",
 }
 
 // vim: ts=2 sts=2
