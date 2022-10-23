@@ -71,7 +71,7 @@ class Pcap:
         macs = get_macs(packet, cached=self.is_cached)
         ip_src, ip_dst = get_ips(packet)
         port_src, port_dst = get_ports(packet)
-        ssid = get_ssid(packet)
+        ssid, probe = get_ssid(packet)
         time, length, service, service_layer = None, None, None, None
         if not self.reduce:
             time = get_time(packet)
@@ -103,7 +103,7 @@ class Pcap:
             self.create_connection_mac(neo4j, macs['src']['mac'], macs['tra']['mac'], proto, time, length, service, service_layer)
             self.create_connection_mac(neo4j, macs['rec']['mac'], macs['dst']['mac'], proto, time, length, service, service_layer)
 
-        self.create_ssid(neo4j, ssid, macs['src']['mac'])
+        self.create_ssid(neo4j, ssid, probe, macs['src']['mac'])
 
     def debug_time_start(self):
         if self.debug_time:
@@ -140,7 +140,12 @@ class Pcap:
                 'hits': 0,
                 'misses': 0,
             },
-            'ADVERTISE': {
+            'ADVERTISES': {
+                'cache': deque([]),
+                'hits': 0,
+                'misses': 0,
+            },
+            'PROBES': {
                 'cache': deque([]),
                 'hits': 0,
                 'misses': 0,
@@ -151,7 +156,7 @@ class Pcap:
     def print_cache_stats(self):
         if not self.debug_cache:
             return
-        keys = ['IP', 'MAC', 'ASSIGN', 'SSID', 'ADVERTISE']
+        keys = ['IP', 'MAC', 'ASSIGN', 'SSID', 'ADVERTISES', 'PROBES']
         print(f'cache_max: {self.cache_max}')
         for k in keys:
             print(f'cache[{k}]:')
@@ -307,7 +312,7 @@ class Pcap:
         neo4j.raw_query(query)
         self.debug_time_end()
 
-    def create_ssid(self, neo4j, ssid, mac_src):
+    def create_ssid(self, neo4j, ssid, probe, mac_src):
         if ssid is None:
             return
         if not self.cached(ssid, 'SSID'):
@@ -316,9 +321,12 @@ class Pcap:
             self.debug_time_end()
         if mac_src is None:
             return
-        if not self.cached([mac_src, ssid], 'ADVERTISE'):
+        relationship = 'ADVERTISES'
+        if probe:
+            relationship = 'PROBES'
+        if not self.cached([mac_src, ssid], relationship):
             self.debug_time_start()
-            neo4j.new_relationship(mac_src, ssid, 'ADVERTISES')
+            neo4j.new_relationship(mac_src, ssid, relationship)
             self.debug_time_end()
 
 def get_protocol(packet):
@@ -441,10 +449,18 @@ def get_service(packet):
 def get_ssid(packet):
     # This is the Wildcard SSID.
     # It's noisy and I'm not sure what to make of it
-    ignore = ('SSID: ')
+    ignore = ('SSID')
     ssid = None
+    probe = False
     if 'wlan.mgt' in packet:
-        ssid = packet['wlan.mgt'].get_field('wlan_ssid')
+        # Format: Tag: SSID parameter set: "TMobileWiFi-2.4GHz"
+        length = packet['wlan.mgt'].get_field('wlan_tag_length')
+        tag = packet['wlan.mgt'].get_field('wlan_tag')
+        if length and int(length) > 0 and tag:
+            ssid = tag[len(tag)-int(length)-1:-1]
+    if 'wlan' in packet:
+        if packet.wlan.fc_type_subtype == '0x0004':
+            probe = True
     if ssid is not None and ssid in ignore:
         ssid = None
-    return ssid
+    return ssid, probe
