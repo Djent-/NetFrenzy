@@ -3,7 +3,7 @@ import time
 import tqdm
 
 import pyshark
-from OuiLookup import OuiLookup
+from ouilookup import OuiLookup
 
 from . import multicast
 
